@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title | safe }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            width: 350px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .song-input {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .search-button {
+            width: 100%;
+            padding: 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        .thumbnail {
+            width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+        .audio-controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        audio {
+            width: 100%;
+        }
+        .lyrics {
+            text-align: center;
+            margin-top: 20px;
+        }
+    </style>
+    <script src="{{ baseURI | safe }}/cd?type=js&name=dynamicWebsite.js"></script>
+    <script src="{{ baseURI | safe }}/cd?type=js&name=hotwire.js"></script>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>Song Search</h1>
+        <input type="text" class="song-input" placeholder="Enter song name...">
+        <button class="search-button">Search Song</button>
+    </div>
+    <div class="results" id="results">
+        <!-- Results will be displayed here -->
+    </div>
+</div>
+
+<script>
+    document.querySelector('.search-button').addEventListener('click', function() {
+        const songName = document.querySelector('.song-input').value;
+        if (songName) {
+            // Dummy data for demonstration
+            document.getElementById('results').innerHTML = `
+                    <div style="text-align: center;">
+                        <h2>${songName}</h2>
+                        <img src="https://via.placeholder.com/300x200" alt="${songName}" class="thumbnail">
+                        <p>Duration: 4:30</p>
+                        <audio controls><source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"></audio>
+                        <div class="lyrics">
+                            <h3>Lyrics:</h3>
+                            <p>[Verse 1] She's got a smile it seems to fit her pretty face<br>
+                            And on the street where she walks people seem to care</p>
+                        </div>
+                        <a href="https://www.youtube.com" target="_blank">YouTube</a>
+                        <a href="https://open.spotify.com" target="_blank">Spotify</a>
+                    </div>
+                `;
+        }
+    });
+</script>
+</body>
+</html>
