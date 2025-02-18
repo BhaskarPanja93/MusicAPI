@@ -1,105 +1,153 @@
-from re import compile as re_compile, search as re_search
+from datetime import datetime
+from datetime import timedelta
 from threading import Thread, Event
 from time import sleep
+
 
 from customisedLogs import CustomisedLogs
 from pooledMySQL import PooledMySQL
 from randomisedString import RandomisedString
 
+
 from Classes.Holders.DBTables import DBTables
 from Classes.Holders.SongData import SongData
 from Classes.Holders.UrlTypes import UrlTypes
+from Classes.Processors.SpotifyAPI import SpotifyAPICollection
+from Classes.Processors.URLHandler import URLHandler
+from Classes.Processors.YTDLP import YTDLP
 
 
-class SongProcessor:
-    def __init__(self, SQLConn:PooledMySQL, logger:CustomisedLogs):
+class SongCache:
+    def __init__(self, SQLConn:PooledMySQL, Logger:CustomisedLogs, URLHandler:URLHandler):
         self.SQLConn = SQLConn
-        self.logger = logger
+        self.logger = Logger
         self.cache:dict[str, SongData] = {}
-        self.watchers:dict[str, Event] = {}
+        self.YTDLP = YTDLP(self.logger)
+        self.SpotifyAPI = SpotifyAPICollection(self.SQLConn)
+        self.URLHandler = URLHandler
 
 
-    @staticmethod
-    def __isValidURL(string: str) -> bool:
-        if not isinstance(string, str):
-            return False
-        regex = re_compile(r'^https?://')
-        if not re_search(regex, string):
-            return False
-        forbidden_substrings = ["//", "playlist", "album", "artist"]
-        for sub in forbidden_substrings:
-            if sub in string:
-                return False
-        return True
+    def __addToDB(self, song:SongData):
+        fetched = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE ({DBTables.SONGS.REAL_NAME}=? AND {'TRUE' if song.songName else 'FALSE'}) OR ({DBTables.SONGS.YT_ID}=? AND {'TRUE' if song.YT else 'FALSE'}) OR ({DBTables.SONGS.SPOTIFY_ID}=? AND {'TRUE' if song.spotify else 'FALSE'}) LIMIT 1", [song.songName, song.YT, song.spotify])
+        if fetched:
+            realID = fetched[0][DBTables.SONGS.SONG_ID].decode()
+            print('duplicate found', song.songID, realID)
+            if realID not in self.cache: self.__DBToCache(realID, True)
+            realSong = self.cache[realID]
+            song.realSong = realSong
+            self.__resetExpiry(realSong, song.audioURL)
+            self.SQLConn.execute(f"INSERT INTO {DBTables.ALIASES.TABLE_NAME} VALUES (?, ?)", [realID, song.searchName])
+        else:
+            print('adding to db', song.songID)
+            self.SQLConn.execute(f"INSERT INTO {DBTables.SONGS.TABLE_NAME} VALUES (?, ?, ?, ?, ?, ?, ?, NOW())", [song.songID, song.songName, song.spotify, song.YT, song.duration, song.thumbnail, song.audioURL])
+            if song.searchName != song.songName:
+                self.SQLConn.execute(f"INSERT INTO {DBTables.ALIASES.TABLE_NAME} VALUES (?, ?)", [song.songID, song.searchName])
 
 
-    @staticmethod
-    def __cleanedTrackName(trackName: str, cleanSymbols: bool = True, size=500) -> str:
-        trackName = trackName.replace('"', "'")
-        if cleanSymbols:
-            for character in "!@#$%^&*()_+{}|:\"<>?[]\\;',./":
-                trackName = trackName.replace(character, " ")
-            while "  " in trackName:
-                trackName = trackName.replace("  ", " ")
-        trackNameWords = trackName.split()
-        cleanedTrackName = ""
-        for word in trackNameWords:
-            if len(cleanedTrackName) + len(word) <= size and word.lower() not in ["official", "(official lyric video)", "(Lyric Video)", "video", "lyrics", "lyric", "audio", ",", "(", ")"]:
-                cleanedTrackName += word + " "
-        return cleanedTrackName.strip()
+    def __newSongFetch(self, song:SongData, category:UrlTypes, string:str):
+        song.waiter = Event()
+        song.waiter.clear()
+        if category == UrlTypes.YT_URL:
+            url = self.URLHandler.merge(category, string)
+            r = self.YTDLP.fetch(url)
+            song.songName = r.get("title")
+            song.YT = string
+            song.duration = r.get("duration")
+            song.audioURL = r.get("url")
+            song.thumbnail = None if r.get("thumbnails") is None else r.get("thumbnails")[0].get('url')
+
+        elif category == UrlTypes.UNKNOWN:
+            r = self.YTDLP.fetch(string + " lyrics")
+            song.YT = r['entries'][0]['id']
+            song.songName = r["entries"][0]["title"]
+            song.audioURL = r['entries'][0]['url']
+            song.duration = r['entries'][0]['duration']
+            song.thumbnail = r['entries'][0]['thumbnail'] if r['entries'][0]['thumbnail'] else None
+
+        if not song.spotify:
+            try: _, song.spotify = self.URLHandler.strip(self.SpotifyAPI.fetchAPI().search(song.songName)['tracks']['items'][0]['external_urls']['spotify'])
+            except: song.spotify = ""
+
+        song.expiry = datetime.now() + timedelta(hours=5)
+        self.__addToDB(song)
+        song.waiter.set()
+        song.waiter = None
+        Thread(target=self.__removeFromCache, args=(song,)).start()
 
 
-    def __strip(self, string: str) -> tuple[UrlTypes, str]:
-        if self.__isValidURL(string):
-            if "spotify.com" in string:
-                if "track/" in string:
-                    return UrlTypes.SPOTIFY_URL, string.split("track/")[-1].split("?")[0]
-                elif "playlist/" in string:
-                    return UrlTypes.SPOTIFY_PLAYLIST, string.split("playlist/")[-1].split("?")[0]
-                elif "artist/" in string:
-                    return UrlTypes.SPOTIFY_ARTIST, string.split("artist/")[-1].split("?")[0]
-                elif "album/" in string:
-                    return UrlTypes.SPOTIFY_ALBUM, string.split("album/")[-1].split("?")[0]
-            elif "youtube.com" in string or "youtu.be" in string or "music.youtu" in string:
-                string = string.replace("?si=", "")  # Remove si parameter if present
-                if "playlist?list=" in string:
-                    return UrlTypes.YT_PLAYLIST, string.split("?list=")[-1].split("&")[0]
-                else:
-                    return UrlTypes.YT_URL, string.split("?v=")[-1].split("&")[0]
-        return UrlTypes.UNKNOWN, self.__cleanedTrackName(string)
+    def __DBToCache(self, songID:str, asRepeat) -> SongData|None:
+        fetched = self.SQLConn.execute(f"SELECT * FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.SONG_ID}=?", [songID])
+        if fetched:
+            fetched = fetched[0]
+            song = SongData()
+            song.songID = songID
+            song.waiter = Event()
+            song.waiter.clear()
+            self.cache[songID] = song
+            song.YT = fetched[DBTables.SONGS.YT_ID].decode()
+            song.spotify = fetched[DBTables.SONGS.SPOTIFY_ID].decode()
+            song.songName = fetched[DBTables.SONGS.REAL_NAME]
+            song.duration = fetched[DBTables.SONGS.DURATION]
+            song.audioURL = fetched[DBTables.SONGS.AUDIO_URL]
+            song.thumbnail = fetched[DBTables.SONGS.THUMBNAIL]
+            song.expiry = fetched[DBTables.SONGS.LAST_UPDATED] + timedelta(hours=5)
+            print("DB TO CACHE", songID)
+            if not asRepeat: self.__resetExpiry(song, None)
+            Thread(target=self.__removeFromCache, args=(song,)).start()
+            song.waiter.set()
+            song.waiter = None
+            return self.cache[songID]
 
 
-    def __fetchNewSong(self, songID:str, category:UrlTypes, string:str):
-        watcher = Event()
-        watcher.set()
-        self.watchers[songID] = watcher
-        sleep(0.001)
-        self.cache = SongData() #TODO:
+    def __removeFromCache(self, song:SongData, seconds:int=3600*4):
+        while (datetime.now() - song.lastFetched).total_seconds() < seconds+5: sleep(1)
+        if song.songID in self.cache:
+            del self.cache[song.songID]
+            print("CLEARED FROM CACHE", song.songID)
 
 
-    def __fetchSongFromDB(self, songID:str):
-        self.cache[songID] = SongData() #TODO:
-        return self.cache[songID]
+    def __resetExpiry(self, song:SongData, url):
+        if url:
+            song.audioURL = url
+            song.expiry = datetime.now()+timedelta(hours=5)
+            song.lastFetched = datetime.now()
+        elif datetime.now() > song.expiry:
+            self.__newSongFetch(song, UrlTypes.YT_URL, song.YT)
+        else: return
+        self.SQLConn.execute(f"UPDATE {DBTables.SONGS.TABLE_NAME} SET {DBTables.SONGS.LAST_UPDATED}=NOW(), {DBTables.SONGS.AUDIO_URL}=? WHERE {DBTables.SONGS.SONG_ID}=?", [song.audioURL, song.songID])
+
 
 
     def getSongID(self, string:str):
-        category, string = self.__strip(string)
-        found = []
-        if category == UrlTypes.UNKNOWN: found = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.REAL_NAME}=? LIMIT 1", [string])
-        elif category == UrlTypes.SPOTIFY_URL: found = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.SPOTIFY_ID}=? LIMIT 1", [string])
-        elif category == UrlTypes.YT_URL: found = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.YT_ID}=? LIMIT 1", [string])
-        if found: return found[0][DBTables.SONGS.SONG_ID]
-        else: ## No real name matching
-            found = self.SQLConn.execute(f"SELECT {DBTables.ALIASES.SONG_ID} FROM {DBTables.ALIASES.TABLE_NAME} WHERE {DBTables.ALIASES.STRING}=? LIMIT 1", [string])
-            if found: return found[0][DBTables.ALIASES.SONG_ID]
-            else: ## No alias name matching
+        category, string = self.URLHandler.strip(string)
+        found = self.SQLConn.execute(f"SELECT {DBTables.ALIASES.SONG_ID} FROM {DBTables.ALIASES.TABLE_NAME} WHERE {DBTables.ALIASES.STRING}=? LIMIT 1", [string])
+        if found: return found[0][DBTables.ALIASES.SONG_ID].decode()
+        else: ## No real name matched
+            if category == UrlTypes.UNKNOWN: found = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.REAL_NAME}=? LIMIT 1", [string])
+            elif category == UrlTypes.SPOTIFY_URL: found = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.SPOTIFY_ID}=? LIMIT 1", [string])
+            elif category == UrlTypes.YT_URL: found = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.YT_ID}=? LIMIT 1", [string])
+            if found: return found[0][DBTables.SONGS.SONG_ID].decode()
+            else: ## No alias name matched
                 songID = RandomisedString().AlphaNumeric(30,30)
-                Thread(target=self.__fetchNewSong, args=(songID, category, string,)).start()
+                song = SongData()
+                song.songID = songID
+                self.cache[songID] = song
+                song.searchName = self.URLHandler.merge(category, string)
+                print(song.searchName)
+                Thread(target=self.__newSongFetch, args=(song, category, string)).start()
                 return songID
 
 
     def getSongData(self, songID:str)->SongData:
-        if songID in self.watchers: self.watchers[songID].wait()
-        if songID in self.cache: return self.cache[songID]
-        else: return self.__fetchSongFromDB(songID)
+        if songID not in self.cache: song = self.__DBToCache(songID, False)
+        else: song = self.cache[songID]
+        if song is not None and song.waiter is not None:
+            song.waiter.wait()
+            if song.realSong is not None:
+                song = song.realSong
+                if song.waiter is not None:
+                    song.waiter.wait()
+            song.lastFetched = datetime.now()
+            self.__resetExpiry(song, None)
+        return song
 

@@ -18,12 +18,12 @@ Welcome to **MusicAPI** – a **free, fast, and easy-to-use API** that lets you 
 ### **🎵 API Endpoints**
 
 **1. Request Song ID**
-- **Endpoint**: `/music/api/{song_name}`
+- **Endpoint**: `https://bhindi1.ddns.net/music/api/prepare/{song_name}`
 - **Method**: GET
 - **Description**: Provide the song name, and the API returns a song ID.
 
 **2. Request Song Data by ID**
-- **Endpoint**: `/music/api/{song_id}`
+- **Endpoint**: `https://bhindi1.ddns.net/music/api/fetch/{song_id}`
 - **Method**: GET
 - **Description**: Using the song ID, fetch detailed song information including URLs for YouTube, Spotify, and the audio file.
 
@@ -57,7 +57,7 @@ Want to try out the API without writing code? No problem! Just head to the bundl
 
 ### **⚡ Support**
 
-For any issues or support, feel free to open an issue in the GitHub repository. We're happy to help!
+For any issues or support, feel free to open an issue in the GitHub repository. 
 
 ---
 

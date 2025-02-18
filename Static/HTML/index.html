@@ -63,6 +63,7 @@
             margin-top: 20px;
         }
     </style>
+    <script>const baseURI = '{{ baseURI }}'</script>
     <script src="{{ baseURI | safe }}/cd?type=js&name=dynamicWebsite.js"></script>
     <script src="{{ baseURI | safe }}/cd?type=js&name=hotwire.js"></script>
 </head>
@@ -70,36 +71,13 @@
 <div class="container">
     <div class="header">
         <h1>Song Search</h1>
-        <input type="text" class="song-input" placeholder="Enter song name...">
-        <button class="search-button">Search Song</button>
+        <form>
+            <div id="SEARCH-CSRF"></div>
+            <input type="text" name="STRING" class="song-input" placeholder="Enter song name...">
+            <button class="search-button" type="submit">Search</button>
+        </form>
     </div>
-    <div class="results" id="results">
-        <!-- Results will be displayed here -->
-    </div>
+    <div class="results" id="SONG-RESULT"></div>
 </div>
-
-<script>
-    document.querySelector('.search-button').addEventListener('click', function() {
-        const songName = document.querySelector('.song-input').value;
-        if (songName) {
-            // Dummy data for demonstration
-            document.getElementById('results').innerHTML = `
-                    <div style="text-align: center;">
-                        <h2>${songName}</h2>
-                        <img src="https://via.placeholder.com/300x200" alt="${songName}" class="thumbnail">
-                        <p>Duration: 4:30</p>
-                        <audio controls><source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"></audio>
-                        <div class="lyrics">
-                            <h3>Lyrics:</h3>
-                            <p>[Verse 1] She's got a smile it seems to fit her pretty face<br>
-                            And on the street where she walks people seem to care</p>
-                        </div>
-                        <a href="https://www.youtube.com" target="_blank">YouTube</a>
-                        <a href="https://open.spotify.com" target="_blank">Spotify</a>
-                    </div>
-                `;
-        }
-    });
-</script>
 </body>
 </html>

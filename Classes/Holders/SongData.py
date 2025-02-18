@@ -3,18 +3,19 @@ from datetime import datetime
 
 class SongData:
     def __init__(self):
+        self.searchName = ""
         self.songID:str = ""
-        self.requestedBy:str = ""
         self.songName:str = ""
-        self.requestName:str = ""
         self.YT:str = ""
         self.spotify:str = ""
-        self.duration:datetime|None = None
+        self.duration:float|int = 0
         self.audioURL:str = ""
         self.thumbnail:str = ""
-        self.expiry:datetime|None = None
+        self.expiry:datetime = datetime.now()
         self.lyrics:str = "No Lyrics LOL :)"
-        self.lastFetched:datetime|None = None
+        self.lastFetched:datetime = datetime.now()
+        self.realSong:SongData|None = None
+        self.waiter = None
 
 
     def fullDict(self):

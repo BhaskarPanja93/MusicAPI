@@ -3,9 +3,10 @@ from Hidden.Secrets import folderLocation
 
 class Folders:
     static = folderLocation/"Static"
+    hidden = folderLocation/"Hidden"
 
     temp = folderLocation/"Temp"
-    autoTemp = temp/"AutoTemp"
+    autoTemp = temp/"Auto"
 
     css = static/"css"
     font = static/"font"
@@ -18,7 +19,14 @@ class Folders:
 
 class Files:
     class HTML:
-        index = Folders.html/"index.html"
+        index = Folders.html/"Index.html"
+        preparing = Folders.html/"Preparing.html"
+        prepared = Folders.html/"Prepared.html"
+        songNotFound = Folders.html/"SongNotFound.html"
+
     class JS:
         dynamicWebsite = Folders.js/"dynamicWebsite.js"
         hotwire = Folders.js/"hotwire.js"
+
+    class COOKIE:
+        YT = Folders.hidden/"YT-COOKIES"
