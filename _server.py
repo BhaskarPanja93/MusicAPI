@@ -41,7 +41,7 @@ def formReceivedCallback(viewer:DynamicWebsite.Viewer, form:Dict):
             songID = SongCache.getSongID(form.get("STRING"))
             viewer.updateHTML(Template(FileCache.fetchStaticHTML(Files.HTML.preparing)).render(songID=songID), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
             song:SongData = SongCache.getSongData(songID)
-            if song: viewer.updateHTML(Template(FileCache.fetchStaticHTML(Files.HTML.prepared)).render(songName=song.songName, thumbnail=song.thumbnail, duration=song.duration, audioURL=song.audioURL, lyrics=song.lyrics, YT=URLHandler.merge(UrlTypes.YT_URL, song.YT), spotify=URLHandler.merge(UrlTypes.SPOTIFY_URL, song.spotify)), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
+            if song is not None: viewer.updateHTML(Template(FileCache.fetchStaticHTML(Files.HTML.prepared)).render(songName=song.songName, thumbnail=song.thumbnail, duration=song.duration, audioURL=song.audioURL, lyrics=song.lyrics, YT=URLHandler.merge(UrlTypes.YT_URL, song.YT), spotify=URLHandler.merge(UrlTypes.SPOTIFY_URL, song.spotify)), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
             else: viewer.updateHTML(FileCache.fetchStaticHTML(Files.HTML.songNotFound), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
             sendFormCSRF(viewer)
 

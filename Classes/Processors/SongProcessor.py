@@ -75,9 +75,9 @@ class SongCache:
         if not song.spotify:
             try:
                 items = self.SpotifyAPI.fetchAPI().API.search(song.songName.lower(), type="track")['tracks']['items']
-                chosen = items[0]
+                chosen = items[1]
                 for item in items:
-                    if item["name"].lower() == song.songName.lower():
+                    if item["name"].lower() == song.songName.lower() or item["name"].lower() in song.songName.lower():
                         chosen = item
                         break
                 song.spotify = chosen["id"]
@@ -145,6 +145,7 @@ class SongCache:
             if category == UrlTypes.UNKNOWN: found = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.REAL_NAME}=? LIMIT 1", [string])
             elif category == UrlTypes.SPOTIFY_URL: found = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.SPOTIFY_ID}=? LIMIT 1", [string])
             elif category == UrlTypes.YT_URL: found = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.YT_ID}=? LIMIT 1", [string])
+            else: return None
             if found: return found[0][DBTables.SONGS.SONG_ID].decode()
             else: ## No alias name matched
                 songID = RandomisedString().AlphaNumeric(30,30)
