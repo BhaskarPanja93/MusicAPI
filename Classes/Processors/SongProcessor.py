@@ -136,7 +136,6 @@ class SongCache:
         self.SQLConn.execute(f"UPDATE {DBTables.SONGS.TABLE_NAME} SET {DBTables.SONGS.LAST_UPDATED}=NOW(), {DBTables.SONGS.AUDIO_URL}=? WHERE {DBTables.SONGS.SONG_ID}=?", [song.audioURL, song.songID])
 
 
-
     def getSongID(self, string:str):
         category, string = self.URLHandler.strip(string)
         found = self.SQLConn.execute(f"SELECT {DBTables.ALIASES.SONG_ID} FROM {DBTables.ALIASES.TABLE_NAME} WHERE {DBTables.ALIASES.STRING}=? LIMIT 1", [string])
@@ -153,7 +152,6 @@ class SongCache:
                 song.songID = songID
                 self.cache[songID] = song
                 song.searchName = self.URLHandler.merge(category, string)
-                print(song.searchName)
                 Thread(target=self.__newSongFetch, args=(song, category, string)).start()
                 return songID
 

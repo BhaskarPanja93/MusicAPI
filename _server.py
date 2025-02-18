@@ -5,9 +5,10 @@ patch_all()
 
 
 from typing import Any, Dict
-from flask import make_response, request, send_from_directory
+from flask import make_response, request, send_from_directory, Response
 from customisedLogs import CustomisedLogs
 from jinja2 import Template
+from requests import get
 
 
 from Hidden.dynamicWebsite import DynamicWebsite
@@ -41,7 +42,7 @@ def formReceivedCallback(viewer:DynamicWebsite.Viewer, form:Dict):
             songID = SongCache.getSongID(form.get("STRING"))
             viewer.updateHTML(Template(FileCache.fetchStaticHTML(Files.HTML.preparing)).render(songID=songID), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
             song:SongData = SongCache.getSongData(songID)
-            if song is not None: viewer.updateHTML(Template(FileCache.fetchStaticHTML(Files.HTML.prepared)).render(songName=song.songName, thumbnail=song.thumbnail, duration=song.duration, audioURL=song.audioURL, lyrics=song.lyrics, YT=URLHandler.merge(UrlTypes.YT_URL, song.YT), spotify=URLHandler.merge(UrlTypes.SPOTIFY_URL, song.spotify)), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
+            if song is not None: viewer.updateHTML(Template(FileCache.fetchStaticHTML(Files.HTML.prepared)).render(songName=song.songName, thumbnail=song.thumbnail, duration=song.duration, audioURL=f"{CoreValues.audioRoute}/{songID}", lyrics=song.lyrics, YT=URLHandler.merge(UrlTypes.YT_URL, song.YT), spotify=URLHandler.merge(UrlTypes.SPOTIFY_URL, song.spotify)), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
             else: viewer.updateHTML(FileCache.fetchStaticHTML(Files.HTML.songNotFound), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
             sendFormCSRF(viewer)
 
@@ -79,6 +80,23 @@ def _fetchAPI(songID):
     song = SongCache.getSongData(songID)
     if song is None: return {"ERROR": "Song not found"}
     return song.fullDict()
+
+
+@DWApps.baseApp.get(f"{CoreValues.audioRoute}/<songID>")
+def _fetchAudio(songID):
+    songID = Template(songID).render()
+    print("AUDIO", songID)
+    song = SongCache.getSongData(songID)
+    with get(song.audioURL, stream=True) as r:
+        print(r.status_code)
+        if r.status_code == 200:
+            def generate():
+                for chunk in r.iter_content(chunk_size=1024):
+                    print(chunk)
+                    if chunk:
+                        yield chunk
+            return Response(generate(), content_type='audio/mpeg')
+    return "", 404
 
 
 @DWApps.baseApp.get("/cd")
