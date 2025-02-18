@@ -91,5 +91,25 @@ def _cd():
     return ""
 
 
+@DWApps.baseApp.before_request
+def _modHeadersBeforeRequest():
+    """
+    Before any request goes to any route, it passes through this function.
+    Applies user remote address correctly (received from proxy)
+    :return:
+    """
+    if request.remote_addr == "127.0.0.1":
+        if request.environ.get("HTTP_X_FORWARDED_FOR") is not None:
+            address = request.environ.get("HTTP_X_FORWARDED_FOR")
+        else: address = "LOCALHOST"
+        request.remote_addr = address
+    if request.environ.get("HTTP_X_FORWARDED_PATH") is not None:
+        request.path = request.environ.get("HTTP_X_FORWARDED_PATH")
+    else:
+        request.path = ""
+    if request.environ.get("HTTP_X_FORWARDED_PROTO") is not None:
+        request.scheme = request.environ.get("HTTP_X_FORWARDED_PROTO")
+
+
 WSGIRunner(DWApps.baseApp, CoreValues.webPort, CoreValues.webRoute, Logger)
 
