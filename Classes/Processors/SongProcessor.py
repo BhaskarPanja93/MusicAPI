@@ -45,8 +45,9 @@ class SongCache:
 
 
     def __newSongFetch(self, song:SongData, category:UrlTypes, string:str):
-        song.waiter = Event()
-        song.waiter.clear()
+        if song.waiter is None:
+            song.waiter = Event()
+            song.waiter.clear()
         if category == UrlTypes.YT_URL:
             url = self.URLHandler.merge(category, string)
             r = self.YTDLP.fetch(url)
@@ -55,6 +56,13 @@ class SongCache:
             song.duration = r.get("duration")
             song.audioURL = r.get("url")
             song.thumbnail = None if r.get("thumbnails") is None else r.get("thumbnails")[0].get('url')
+
+        elif category == UrlTypes.SPOTIFY_URL:
+            details = self.SpotifyAPI.fetchAPI().API.track(string)
+            artists = " ".join([_["name"] for _ in details['artists']])
+            song.songName = details["name"] + " " + artists
+            if song.songName:
+                self.__newSongFetch(song, UrlTypes.UNKNOWN, song.songName)
 
         elif category == UrlTypes.UNKNOWN:
             r = self.YTDLP.fetch(string + " lyrics")
@@ -65,13 +73,22 @@ class SongCache:
             song.thumbnail = r['entries'][0]['thumbnail'] if r['entries'][0]['thumbnail'] else None
 
         if not song.spotify:
-            try: _, song.spotify = self.URLHandler.strip(self.SpotifyAPI.fetchAPI().search(song.songName)['tracks']['items'][0]['external_urls']['spotify'])
-            except: song.spotify = ""
+            try:
+                items = self.SpotifyAPI.fetchAPI().API.search(song.songName.lower(), type="track")['tracks']['items']
+                chosen = items[0]
+                for item in items:
+                    if item["name"].lower() == song.songName.lower():
+                        chosen = item
+                        break
+                song.spotify = chosen["id"]
+            except:
+                song.spotify = ""
 
         song.expiry = datetime.now() + timedelta(hours=5)
         self.__addToDB(song)
-        song.waiter.set()
-        song.waiter = None
+        if song.waiter is not None:
+            song.waiter.set()
+            song.waiter = None
         Thread(target=self.__removeFromCache, args=(song,)).start()
 
 
@@ -81,8 +98,9 @@ class SongCache:
             fetched = fetched[0]
             song = SongData()
             song.songID = songID
-            song.waiter = Event()
-            song.waiter.clear()
+            if song.waiter is None:
+                song.waiter = Event()
+                song.waiter.clear()
             self.cache[songID] = song
             song.YT = fetched[DBTables.SONGS.YT_ID].decode()
             song.spotify = fetched[DBTables.SONGS.SPOTIFY_ID].decode()
@@ -94,8 +112,9 @@ class SongCache:
             print("DB TO CACHE", songID)
             if not asRepeat: self.__resetExpiry(song, None)
             Thread(target=self.__removeFromCache, args=(song,)).start()
-            song.waiter.set()
-            song.waiter = None
+            if song.waiter is not None:
+                song.waiter.set()
+                song.waiter = None
             return self.cache[songID]
 
 

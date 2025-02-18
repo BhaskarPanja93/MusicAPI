@@ -1,15 +1,12 @@
 from customisedLogs import CustomisedLogs
-from rateLimitedQueues import RateLimitedQueues
 from yt_dlp import YoutubeDL, cookies
 
 from Classes.Holders.FileInvolved import Files
-from Hidden.Secrets import folderLocation
 
 
 class YTDLP:
     def __init__(self, logger:CustomisedLogs):
         self.logger = logger
-        self.queue = RateLimitedQueues()
         self.HEADER_FOR_REQUEST = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.4664.110 Safari/537.36'}
         self.downloaders:list[YoutubeDL] = [
             YoutubeDL({'title': True,
