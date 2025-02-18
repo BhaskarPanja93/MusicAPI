@@ -1,9 +1,5 @@
-<!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title | safe }}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -63,21 +59,25 @@
             margin-top: 20px;
         }
     </style>
+    <meta charset="UTF-8">
+    <base href="{{ baseURI }}">
     <script>const baseURI = '{{ baseURI }}'</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="{{ baseURI | safe }}/cd?type=js&name=dynamicWebsite.js"></script>
     <script src="{{ baseURI | safe }}/cd?type=js&name=hotwire.js"></script>
+    <title>{{ title | safe }}</title>
 </head>
 <body>
-<div class="container">
-    <div class="header">
-        <h1>Song Search</h1>
-        <form>
-            <div id="SEARCH-CSRF"></div>
-            <input type="text" name="STRING" class="song-input" placeholder="Enter song name...">
-            <button class="search-button" type="submit">Search</button>
-        </form>
+    <div class="container">
+        <div class="header">
+            <h1>Song Search</h1>
+            <form>
+                <div id="SEARCH-CSRF"></div>
+                <input type="text" name="STRING" class="song-input" placeholder="Enter song name...">
+                <button class="search-button" type="submit">Search</button>
+            </form>
+        </div>
+        <div class="results" id="SONG-RESULT"></div>
     </div>
-    <div class="results" id="SONG-RESULT"></div>
-</div>
 </body>
 </html>
