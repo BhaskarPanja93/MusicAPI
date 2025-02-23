@@ -6,11 +6,17 @@ from customisedLogs import CustomisedLogs
 
 
 class WSGIRunner:
-
-    def __init__(self, app: Flask, port: int, route: str, logger: CustomisedLogs):
-        cert_file = r'C:\cert\fullchain1.pem'
-        key_file = r'C:\cert\privkey1.pem'
-        if Path(cert_file).is_file() and Path(key_file).is_file() and False:
+    def __init__(self, app: Flask, port: int, route: str, logger: CustomisedLogs, cert_file=None, key_file=None):
+        """
+        Start the WSGI server with SSL errors suppressed and customised logs enabled
+        :param app: app to serve
+        :param port: port to serve on
+        :param route: route to print
+        :param logger: customisedLogger
+        :param cert_file: ssl cert file
+        :param key_file: ssl key file
+        """
+        if cert_file is not None and key_file is not None and Path(cert_file).is_file() and Path(key_file).is_file():
             print(f"https://127.0.0.1:{port}{route}")
             WSGIRunner.LogAttached(('0.0.0.0', port,), app, logger, certfile=cert_file, keyfile=key_file).serve_forever()
         else:
@@ -19,6 +25,9 @@ class WSGIRunner:
 
 
     class LogAttached(WSGIServer):
+        """
+        Attach logger to the WSGI server
+        """
         def __init__(self, listener, application, logger:CustomisedLogs, **ssl_args):
             self.logger:CustomisedLogs = logger
             self.handler_class: WSGIRunner.LogAttached.SSLSuppressed | None = None
@@ -41,12 +50,20 @@ class WSGIRunner:
 
 
         class SSLSuppressed(WSGIHandler):
+            """
+            Suppress SSL Errors for the WSGI server
+            """
             def __init__(self, sock, address, server):
                 super().__init__(sock, address, server)
 
 
             @staticmethod
             def format_bytes(size_in_bytes):
+                """
+                Convert bytes to human-readable string
+                :param size_in_bytes:
+                :return:
+                """
                 if size_in_bytes == 0:
                     return "0B"
                 units = ["B", "K", "M", "G", "T", "P", "E", "Z", "Y"]
@@ -59,6 +76,16 @@ class WSGIRunner:
 
             @staticmethod
             def format_log(delta, client_address, status_code, method, length, path):
+                """
+                Present the log string
+                :param delta:
+                :param client_address:
+                :param status_code:
+                :param method:
+                :param length:
+                :param path:
+                :return:
+                """
                 return (
                     f"{delta:<{10}} "
                     f"{client_address:<{20}} "
@@ -77,10 +104,20 @@ class WSGIRunner:
 
 
             def log_error(self, msg, *args):
+                """
+                Log errors (overridden)
+                :param msg:
+                :param args:
+                :return:
+                """
                 pass
 
 
-            def log_request(self):
+            def log_request(self) -> None:
+                """
+                Log the current context (overridden)
+                :return:
+                """
                 length = '%s' % self.format_bytes(self.response_length) or '-B'
                 if self.time_finish:
                     delta = '%.3fms' % ((self.time_finish - self.time_start)*1000)

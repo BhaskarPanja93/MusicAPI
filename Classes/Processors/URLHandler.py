@@ -7,6 +7,11 @@ class URLHandler:
 
     @staticmethod
     def isValidURL(string: str) -> bool:
+        """
+        Returns True if the given string is a valid URL, False otherwise.
+        :param string: the string to check
+        :return:
+        """
         correct = True
         regex = re_compile("https?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|%[0-9a-fA-F][0-9a-fA-F])+")
         if not re_search(regex, string):
@@ -21,6 +26,13 @@ class URLHandler:
 
     @staticmethod
     def cleanedTrackName(trackName: str, cleanSymbols: bool = True, size=500) -> str:
+        """
+        Returns a cleaned track name of desired size
+        :param trackName: the string to clean
+        :param cleanSymbols: boolean to remove non-alphanumeric characters
+        :param size: maximum string size
+        :return:
+        """
         trackName = trackName.replace('"', "'")
         if cleanSymbols:
             for character in "!@#$%^&*()_+{}|:\"<>?[]\\;',./":
@@ -36,6 +48,11 @@ class URLHandler:
 
 
     def strip(self, string: str) -> tuple[UrlTypes, str]:
+        """
+        Read the type of string and strip ID for urls else keep entire string and return it
+        :param string: the string to check and strip
+        :return:
+        """
         if self.isValidURL(string):
             if "spotify.com" in string:
                 if "track/" in string:
@@ -57,6 +74,12 @@ class URLHandler:
 
     @staticmethod
     def merge(category:UrlTypes, string:str) -> str:
+        """
+        Reverse of URLHandler.strip, merges the ID to its parent string
+        :param category: type of the string to merge
+        :param string: the string to merge
+        :return:
+        """
         if category == UrlTypes.SPOTIFY_URL:
             return "https://open.spotify.com/track/" + string
         elif category == UrlTypes.SPOTIFY_PLAYLIST:

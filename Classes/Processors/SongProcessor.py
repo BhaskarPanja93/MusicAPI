@@ -10,74 +10,91 @@ from randomisedString import RandomisedString
 
 
 from Classes.Holders.DBTables import DBTables
-from Classes.Holders.SongData import SongData
 from Classes.Holders.UrlTypes import UrlTypes
+from Classes.Processors.SongData import SongData
 from Classes.Processors.SpotifyAPI import SpotifyAPICollection
 from Classes.Processors.URLHandler import URLHandler
 from Classes.Processors.YTDLP import YTDLP
 
 
 class SongCache:
+    """
+    Processor to collect, renew and handle local and DB caches for all song data
+    """
     def __init__(self, SQLConn:PooledMySQL, Logger:CustomisedLogs, URLHandler:URLHandler):
         self.SQLConn = SQLConn
         self.logger = Logger
         self.cache:dict[str, SongData] = {}
         self.YTDLP = YTDLP(self.logger)
-        self.SpotifyAPI = SpotifyAPICollection(self.SQLConn)
+        self.SpotifyAPICollection = SpotifyAPICollection(self.SQLConn)
         self.URLHandler = URLHandler
 
 
-    def __addToDB(self, song:SongData):
-        fetched = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE ({DBTables.SONGS.REAL_NAME}=? AND {'TRUE' if song.songName else 'FALSE'}) OR ({DBTables.SONGS.YT_ID}=? AND {'TRUE' if song.YT else 'FALSE'}) OR ({DBTables.SONGS.SPOTIFY_ID}=? AND {'TRUE' if song.spotify else 'FALSE'}) LIMIT 1", [song.songName, song.YT, song.spotify])
+    def __save_to_db(self, song:SongData) -> None:
+        """
+        Store a new song to DB or mark as repeat
+        :param song: SongData object with all values
+        :return:
+        """
+        fetched = self.SQLConn.execute(f"SELECT {DBTables.SONGS.SONG_ID} FROM {DBTables.SONGS.TABLE_NAME} WHERE ({DBTables.SONGS.REAL_NAME}=? AND {'TRUE' if song.song_name else 'FALSE'}) OR ({DBTables.SONGS.YT_ID}=? AND {'TRUE' if song.yt else 'FALSE'}) OR ({DBTables.SONGS.SPOTIFY_ID}=? AND {'TRUE' if song.spotify else 'FALSE'}) LIMIT 1", [song.song_name, song.yt, song.spotify])
         if fetched:
             realID = fetched[0][DBTables.SONGS.SONG_ID].decode()
-            print('duplicate found', song.songID, realID)
-            if realID not in self.cache: self.__DBToCache(realID, True)
+            if realID not in self.cache: self.__cache_from_db(realID, True)
             realSong = self.cache[realID]
-            song.realSong = realSong
-            self.__resetExpiry(realSong, song.audioURL)
-            self.SQLConn.execute(f"INSERT INTO {DBTables.ALIASES.TABLE_NAME} VALUES (?, ?)", [realID, song.searchName])
+            song.repeat_for = realSong
+            self.__renew_expiry(realSong, song.audio_url)
+            self.SQLConn.execute(f"INSERT INTO {DBTables.ALIASES.TABLE_NAME} VALUES (?, ?)", [realID, song.search_name])
         else:
-            print('adding to db', song.songID)
-            self.SQLConn.execute(f"INSERT INTO {DBTables.SONGS.TABLE_NAME} VALUES (?, ?, ?, ?, ?, ?, ?, NOW())", [song.songID, song.songName, song.spotify, song.YT, song.duration, song.thumbnail, song.audioURL])
-            if song.searchName != song.songName:
-                self.SQLConn.execute(f"INSERT INTO {DBTables.ALIASES.TABLE_NAME} VALUES (?, ?)", [song.songID, song.searchName])
+            self.SQLConn.execute(f"INSERT INTO {DBTables.SONGS.TABLE_NAME} VALUES (?, ?, ?, ?, ?, ?, ?, NOW())", [song.song_id, song.song_name, song.spotify, song.yt, song.duration, song.thumbnail, song.audio_url])
+            if song.search_name != song.song_name:
+                self.SQLConn.execute(f"INSERT INTO {DBTables.ALIASES.TABLE_NAME} VALUES (?, ?)", [song.song_id, song.search_name])
 
 
-    def __newSongFetch(self, song:SongData, category:UrlTypes, string:str):
+    def __fetch_new(self, song:SongData, category:UrlTypes, string:str) -> None:
+        """
+        Fetch a new song from YTDLP or Spotipy based on category and name/url string implementing Event based waiting to prevent race conditions
+        Also keeps track of audio url expiry and calls for refresh when needed
+        :param song: the SongData object to fill
+        :param category: category of the string
+        :param string: name/url string
+        :return:
+        """
         if song.waiter is None:
             song.waiter = Event()
             song.waiter.clear()
+
         if category == UrlTypes.YT_URL:
             url = self.URLHandler.merge(category, string)
-            r = self.YTDLP.fetch(url)
-            song.songName = r.get("title")
-            song.YT = string
+            r = self.YTDLP.get_downloader(url)
+            song.song_name = r.get("title")
+            song.yt = string
             song.duration = r.get("duration")
-            song.audioURL = r.get("url")
+            song.audio_url = r.get("url")
+            Thread(target=song.fetch_stream).start()
             song.thumbnail = None if r.get("thumbnails") is None else r.get("thumbnails")[0].get('url')
 
         elif category == UrlTypes.SPOTIFY_URL:
-            details = self.SpotifyAPI.fetchAPI().API.track(string)
+            details = self.SpotifyAPICollection.fetch_api().API.track(string)
             artists = " ".join([_["name"] for _ in details['artists']])
-            song.songName = details["name"] + " " + artists
-            if song.songName:
-                self.__newSongFetch(song, UrlTypes.UNKNOWN, song.songName)
+            song.song_name = details["name"] + " " + artists
+            if song.song_name:
+                self.__fetch_new(song, UrlTypes.UNKNOWN, song.song_name)
 
         elif category == UrlTypes.UNKNOWN:
-            r = self.YTDLP.fetch(string + " lyrics")
-            song.YT = r['entries'][0]['id']
-            song.songName = r["entries"][0]["title"]
-            song.audioURL = r['entries'][0]['url']
+            r = self.YTDLP.get_downloader(string + " lyrics")
+            song.yt = r['entries'][0]['id']
+            song.song_name = r["entries"][0]["title"]
+            song.audio_url = r['entries'][0]['url']
+            Thread(target=song.fetch_stream).start()
             song.duration = r['entries'][0]['duration']
             song.thumbnail = r['entries'][0]['thumbnail'] if r['entries'][0]['thumbnail'] else None
 
         if not song.spotify:
             try:
-                items = self.SpotifyAPI.fetchAPI().API.search(song.songName.lower(), type="track")['tracks']['items']
+                items = self.SpotifyAPICollection.fetch_api().API.search(song.song_name.lower(), type="track")['tracks']['items']
                 chosen = items[1]
                 for item in items:
-                    if item["name"].lower() == song.songName.lower() or item["name"].lower() in song.songName.lower():
+                    if item["name"].lower() == song.song_name.lower() or item["name"].lower() in song.song_name.lower():
                         chosen = item
                         break
                 song.spotify = chosen["id"]
@@ -85,58 +102,81 @@ class SongCache:
                 song.spotify = ""
 
         song.expiry = datetime.now() + timedelta(hours=5)
-        self.__addToDB(song)
+        self.__save_to_db(song)
         if song.waiter is not None:
             song.waiter.set()
             song.waiter = None
-        Thread(target=self.__removeFromCache, args=(song,)).start()
+        Thread(target=self.__remove_cache, args=(song,)).start()
 
 
-    def __DBToCache(self, songID:str, asRepeat) -> SongData|None:
+    def __cache_from_db(self, songID:str, asRepeat) -> SongData | None:
+        """
+        Fetch a song data from DB
+        :param songID: ID of the song
+        :param asRepeat: if the song has to be marked as real for some other repeat song, which will define if it needs to be renewed
+        :return: SongData object
+        """
         fetched = self.SQLConn.execute(f"SELECT * FROM {DBTables.SONGS.TABLE_NAME} WHERE {DBTables.SONGS.SONG_ID}=?", [songID])
         if fetched:
             fetched = fetched[0]
             song = SongData()
-            song.songID = songID
+            song.song_id = songID
             if song.waiter is None:
                 song.waiter = Event()
                 song.waiter.clear()
             self.cache[songID] = song
-            song.YT = fetched[DBTables.SONGS.YT_ID].decode()
+            song.yt = fetched[DBTables.SONGS.YT_ID].decode()
             song.spotify = fetched[DBTables.SONGS.SPOTIFY_ID].decode()
-            song.songName = fetched[DBTables.SONGS.REAL_NAME]
+            song.song_name = fetched[DBTables.SONGS.REAL_NAME]
             song.duration = fetched[DBTables.SONGS.DURATION]
-            song.audioURL = fetched[DBTables.SONGS.AUDIO_URL]
+            song.audio_url = fetched[DBTables.SONGS.AUDIO_URL]
+            Thread(target=song.fetch_stream).start()
             song.thumbnail = fetched[DBTables.SONGS.THUMBNAIL]
             song.expiry = fetched[DBTables.SONGS.LAST_UPDATED] + timedelta(hours=5)
-            print("DB TO CACHE", songID)
-            if not asRepeat: self.__resetExpiry(song, None)
-            Thread(target=self.__removeFromCache, args=(song,)).start()
+            if not asRepeat: self.__renew_expiry(song, None)
+            Thread(target=self.__remove_cache, args=(song,)).start()
             if song.waiter is not None:
                 song.waiter.set()
                 song.waiter = None
             return self.cache[songID]
 
 
-    def __removeFromCache(self, song:SongData, seconds:int=3600*4):
-        while (datetime.now() - song.lastFetched).total_seconds() < seconds+5: sleep(1)
-        if song.songID in self.cache:
-            del self.cache[song.songID]
-            print("CLEARED FROM CACHE", song.songID)
+    def __remove_cache(self, song:SongData, seconds:int= 3600 * 4):
+        """
+        If any song is not requested for n seconds, remove it from the cache
+        :param song: the song to remove
+        :param seconds: time to wait in seconds
+        :return:
+        """
+        while (datetime.now() - song.last_fetched_at).total_seconds() < seconds+5: sleep(1)
+        if song.song_id in self.cache:
+            del self.cache[song.song_id]
 
 
-    def __resetExpiry(self, song:SongData, url):
+    def __renew_expiry(self, song:SongData, url:str|None):
+        """
+        Wait for expiry and renew if required
+        :param song: song to renew
+        :param url: fetched audio_url to use the url directly or None to fetch it manually
+        :return:
+        """
         if url:
-            song.audioURL = url
+            song.audio_url = url
+            Thread(target=song.fetch_stream).start()
             song.expiry = datetime.now()+timedelta(hours=5)
-            song.lastFetched = datetime.now()
+            song.last_fetched_at = datetime.now()
         elif datetime.now() > song.expiry:
-            self.__newSongFetch(song, UrlTypes.YT_URL, song.YT)
+            self.__fetch_new(song, UrlTypes.YT_URL, song.yt)
         else: return
-        self.SQLConn.execute(f"UPDATE {DBTables.SONGS.TABLE_NAME} SET {DBTables.SONGS.LAST_UPDATED}=NOW(), {DBTables.SONGS.AUDIO_URL}=? WHERE {DBTables.SONGS.SONG_ID}=?", [song.audioURL, song.songID])
+        self.SQLConn.execute(f"UPDATE {DBTables.SONGS.TABLE_NAME} SET {DBTables.SONGS.LAST_UPDATED}=NOW(), {DBTables.SONGS.AUDIO_URL}=? WHERE {DBTables.SONGS.SONG_ID}=?", [song.audio_url, song.song_id])
 
 
-    def getSongID(self, string:str):
+    def get_song_id(self, string:str) -> str|None:
+        """
+        Find relevant song based on name or URL provided
+        :param string: name or url to search for
+        :return: 30-character unique ID for the song or None if the string is a playlist or other unknown type
+        """
         category, string = self.URLHandler.strip(string)
         found = self.SQLConn.execute(f"SELECT {DBTables.ALIASES.SONG_ID} FROM {DBTables.ALIASES.TABLE_NAME} WHERE {DBTables.ALIASES.STRING}=? LIMIT 1", [string])
         if found: return found[0][DBTables.ALIASES.SONG_ID].decode()
@@ -149,23 +189,28 @@ class SongCache:
             else: ## No alias name matched
                 songID = RandomisedString().AlphaNumeric(30,30)
                 song = SongData()
-                song.songID = songID
+                song.song_id = songID
                 self.cache[songID] = song
-                song.searchName = self.URLHandler.merge(category, string)
-                Thread(target=self.__newSongFetch, args=(song, category, string)).start()
+                song.search_name = self.URLHandler.merge(category, string)
+                Thread(target=self.__fetch_new, args=(song, category, string)).start()
                 return songID
 
 
-    def getSongData(self, songID:str)->SongData:
-        if songID not in self.cache: song = self.__DBToCache(songID, False)
+    def get_song_data(self, songID:str)->SongData:
+        """
+        Wait for song with the ID to be prepared and then return it
+        :param songID: ID to search for
+        :return:
+        """
+        if songID not in self.cache: song = self.__cache_from_db(songID, False)
         else: song = self.cache[songID]
         if song is not None and song.waiter is not None:
             song.waiter.wait()
-            if song.realSong is not None:
-                song = song.realSong
+            if song.repeat_for is not None:
+                song = song.repeat_for
                 if song.waiter is not None:
                     song.waiter.wait()
-            song.lastFetched = datetime.now()
-            self.__resetExpiry(song, None)
+            song.last_fetched_at = datetime.now()
+            self.__renew_expiry(song, None)
         return song
 

@@ -18,7 +18,7 @@ Welcome to **MusicAPI** – a **free, fast, and easy-to-use API** that lets you 
 ### **🎵 API Endpoints**
 
 **1. Request Song ID**
-- **Endpoint**: `https://bhindi1.ddns.net/music/api/prepare/{song_name}`
+- **Endpoint**: `https://bhindi1.ddns.net/music/api/prepare/{song_name/url}`
 - **Method**: GET
 - **Description**: Provide the song name, and the API returns a song ID.
 
@@ -27,13 +27,18 @@ Welcome to **MusicAPI** – a **free, fast, and easy-to-use API** that lets you 
 - **Method**: GET
 - **Description**: Using the song ID, fetch detailed song information including URLs for YouTube, Spotify, and the audio file.
 
+**3. Request Song Audio stream by ID**
+- **Endpoint**: `https://bhindi1.ddns.net/music/api/audio/{song_id}`
+- **Method**: GET
+- **Description**: Using the song ID, fetch the audio data as a stream, incase the default audio_url doesn't work.
+
 ---
 
 ### **🌐 Web Interface**
 
 Want to try out the API without writing code? No problem! Just head to the bundled web interface and start playing songs in seconds.
 
-👉 **Visit the Web Interface**: [MusicAPI Web Interface](https://bhindi1.ddns.net/bpd/music)
+👉 **Visit the Web Interface**: [MusicAPI Web Interface](https://bhindi1.ddns.net/music)
 
 ---
 
