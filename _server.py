@@ -30,6 +30,7 @@ def viewerConnectedCallback(viewer:DynamicWebsite.Viewer):
     :return:
     """
     print("Connected: ", viewer.viewerID)
+    viewer.privateData={"baseURI":request.path.split("?")[0]} #"" if request.path == "/" else request.path
     sendFormCSRF(viewer)
 
 
@@ -57,7 +58,7 @@ def formReceivedCallback(viewer:DynamicWebsite.Viewer, form:Dict):
             songID = SongCache.get_song_id(form.get("STRING"))
             viewer.updateHTML(Template(FileCache.fetch_html(Files.HTML.preparing)).render(songID=songID), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
             song:SongData = SongCache.get_song_data(songID)
-            if song is not None: viewer.updateHTML(Template(FileCache.fetch_html(Files.HTML.prepared)).render(songName=song.song_name, thumbnail=song.thumbnail, duration=song.duration, audioURL=f"/api/audio/{songID}", lyrics=song.lyrics, YT=URLHandler.merge(UrlTypes.YT_URL, song.yt), spotify=URLHandler.merge(UrlTypes.SPOTIFY_URL, song.spotify)), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
+            if song is not None: viewer.updateHTML(Template(FileCache.fetch_html(Files.HTML.prepared)).render(baseURI=viewer.privateData.get("baseURI"), songName=song.song_name, thumbnail=song.thumbnail, duration=song.duration, songID=songID, lyrics=song.lyrics, YT=URLHandler.merge(UrlTypes.YT_URL, song.yt), spotify=URLHandler.merge(UrlTypes.SPOTIFY_URL, song.spotify)), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
             else: viewer.updateHTML(FileCache.fetch_html(Files.HTML.songNotFound), "SONG-RESULT", DynamicWebsite.UpdateMethods.update)
             sendFormCSRF(viewer)
 
@@ -77,7 +78,7 @@ def firstPageRenderer():
     The first page with head body and every element being sent when user first connects
     :return:
     """
-    return make_response(Template(FileCache.fetch_html(Files.HTML.index)).render(title=CoreValues.appName, baseURI="" if request.path == "/" else request.path))
+    return make_response(Template(FileCache.fetch_html(Files.HTML.index)).render(title=CoreValues.appName, baseURI=request.path.split("?")[0]))
 
 
 def sendFormCSRF(viewer:DynamicWebsite.Viewer):

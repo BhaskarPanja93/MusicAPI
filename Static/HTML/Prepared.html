@@ -2,7 +2,7 @@
   <h2>{{songName}}</h2>
   <img src="{{thumbnail}}" alt="Bad Internet" class="thumbnail">
   <p>Duration: {{duration}}secs</p>
-  <audio controls><source src="{{audioURL}}"></audio>
+  <audio controls><source src="{{ baseURI | safe }}/api/audio/{{songID}}"></audio>
   <div class="lyrics">
     <h3>Lyrics:</h3>
     <p>{{lyrics}}</p>
